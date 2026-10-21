@@ -11,10 +11,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GaGeRoid">
 
-    <!-- 동적 Manifest 및 PNG 아이콘 생성 스크립트 (설치 오류 완벽 해결) -->
+    <!-- 동적 Manifest 및 PNG 아이콘 생성 스크립트 -->
     <script>
         (function() {
-            // 브라우저 내부에서 실시간으로 PNG 아이콘을 생성하는 함수
             function createPngIcon(size) {
                 const canvas = document.createElement('canvas');
                 canvas.width = size;
@@ -33,7 +32,6 @@
                 return canvas.toDataURL('image/png');
             }
 
-            // Data URI 매니페스트 오류를 방지하기 위해 현재 접속한 절대 경로 추출
             const absoluteUrl = window.location.href.split('?')[0] || ".";
 
             const manifest = {
@@ -41,7 +39,7 @@
                 "short_name": "GaGeRoid",
                 "start_url": absoluteUrl,
                 "display": "standalone",
-                "background_color": "#2c3e50", /* 시스템 스플래시 화면도 네이비색으로 통일 */
+                "background_color": "#2c3e50",
                 "theme_color": "#4A90E2",
                 "description": "간편 가계부 및 자산 관리 앱",
                 "icons": [
@@ -66,7 +64,7 @@
         :root {
             --primary: #4A90E2;
             --bg: #e4e9f0;
-            --footer-bg: #2c3e50; /* 하단 네비게이션 바 및 푸터 통일 색상 */
+            --footer-bg: #2c3e50;
             --text: #333;
             --border: #cbd5e1;
             --red: #e74c3c;
@@ -75,7 +73,6 @@
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', sans-serif; }
         
-        /* 문서 전체 바닥을 네이비로 설정하여 안드로이드 하단 바 색상 동기화 */
         html, body { background-color: var(--footer-bg); height: var(--app-height); overflow: hidden; }
         body { display: flex; flex-direction: column; }
         
@@ -85,7 +82,6 @@
         .top-action-btn { padding: 6px 10px; margin-right: 5px; border: none; border-radius: 5px; background: #34495e; color: white; font-size: 12px; font-weight: bold; cursor: pointer; flex-shrink: 0; }
         .pwa-install-btn { background: #27ae60; color: white; display: none; }
 
-        /* 실제 화면 영역에 밝은 회색 적용 및 기기 하단 여백(Safe Area) 확보 */
         .screen { background-color: var(--bg); flex: 1; display: none; flex-direction: column; overflow: hidden; padding: 15px; padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
         .screen.active { display: flex; }
 
@@ -114,7 +110,6 @@
         .btn-deposit { background: var(--red); }
         .btn-expense { background: var(--blue); }
 
-        /* 하단 푸터 영역에 모바일 기기 Safe Area 패딩 추가 */
         .footer-area { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); background: var(--footer-bg); box-shadow: 0 -3px 10px rgba(0,0,0,0.15); z-index: 10; height: auto; min-height: 50px; }
         .creator-info { font-size: 12px; color: #ecf0f1; line-height: 1.4; }
         
@@ -226,7 +221,7 @@
 
     <div class="footer-area">
         <div class="creator-info">
-            제작: yomaLapin<br>Ver: 202610-004 (Nav Fix)
+            제작: yomaLapin<br>Ver: 202610-005 (Load Fix)
         </div>
         <button class="btn-small" style="background:#2ecc71;" onclick="exportJSON()">save</button>
     </div>
@@ -244,7 +239,6 @@
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
 
-        // 오프라인 응답까지 완벽하게 처리하는 서비스 워커 등록
         if ('serviceWorker' in navigator) {
             const swCode = `
                 self.addEventListener('install', (e) => self.skipWaiting());
@@ -487,7 +481,7 @@
             trs.forEach(t => {
                 if(t.type === 'set') bal = t.amount;
                 else if(t.type === 'deposit') bal += t.amount;
-                else if(t.type === 'expense') 단 -= t.amount;
+                else if(t.type === 'expense') bal -= t.amount;
             });
             return bal;
         }
@@ -814,21 +808,37 @@
         }
 
         function loadFileContent() {
-            if(!pendingFileContent) return;
+            if(!pendingFileContent || !pendingFileContent.accounts) {
+                alert("유효하지 않은 백업 파일입니다.");
+                closeModal();
+                return;
+            }
+
             const tx = db.transaction(['accounts', 'transactions'], 'readwrite');
             const accStore = tx.objectStore('accounts');
             const trStore = tx.objectStore('transactions');
 
+            // 기존 데이터를 깨끗하게 비운 뒤 새로운 데이터로 채웁니다.
             accStore.clear();
             trStore.clear();
 
-            pendingFileContent.accounts.forEach(a => accStore.add(a));
-            pendingFileContent.transactions.forEach(t => trStore.add(t));
+            if (pendingFileContent.accounts) {
+                pendingFileContent.accounts.forEach(a => accStore.add(a));
+            }
+            if (pendingFileContent.transactions) {
+                pendingFileContent.transactions.forEach(t => trStore.add(t));
+            }
 
             tx.oncomplete = () => {
                 loadDataFromDB();
                 closeModal();
                 pendingFileContent = null;
+            };
+
+            tx.onerror = (err) => {
+                console.error("File load error:", err);
+                alert("파일을 불러오는 중 오류가 발생했습니다.");
+                closeModal();
             };
         }
 
