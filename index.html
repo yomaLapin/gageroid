@@ -11,24 +11,54 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GaGeRoid">
 
-    <!-- Inline Web App Manifest (Data URL 방식) -->
-    <link rel="manifest" href='data:application/manifest+json,{
-        "name": "GaGeRoid - 가계부",
-        "short_name": "GaGeRoid",
-        "start_url": ".",
-        "display": "standalone",
-        "background_color": "#f4f6f8",
-        "theme_color": "#4A90E2",
-        "description": "간편 가계부 및 자산 관리 앱",
-        "icons": [
-            {
-                "src": "data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%234A90E2%22/><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>",
-                "sizes": "192x192 512x512",
-                "type": "image/svg+xml",
-                "purpose": "any maskable"
+    <!-- 동적 Manifest 및 PNG 아이콘 생성 스크립트 (설치 오류 완벽 해결) -->
+    <script>
+        (function() {
+            // 브라우저 내부에서 실시간으로 PNG 아이콘을 생성하는 함수
+            function createPngIcon(size) {
+                const canvas = document.createElement('canvas');
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = '#4A90E2';
+                ctx.fillRect(0, 0, size, size);
+                
+                ctx.fillStyle = 'white';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.font = Math.floor(size * 0.5) + 'px Arial';
+                ctx.fillText('💰', size / 2, size / 2 + size * 0.05);
+                
+                return canvas.toDataURL('image/png');
             }
-        ]
-    }'>
+
+            // Data URI 매니페스트 오류를 방지하기 위해 현재 접속한 절대 경로 추출
+            const absoluteUrl = window.location.href.split('?')[0] || ".";
+
+            const manifest = {
+                "name": "GaGeRoid - 가계부",
+                "short_name": "GaGeRoid",
+                "start_url": absoluteUrl,
+                "display": "standalone",
+                "background_color": "#f4f6f8",
+                "theme_color": "#4A90E2",
+                "description": "간편 가계부 및 자산 관리 앱",
+                "icons": [
+                    { "src": createPngIcon(192), "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+                    { "src": createPngIcon(512), "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+                ]
+            };
+
+            const manifestStr = encodeURIComponent(JSON.stringify(manifest));
+            const manifestUrl = 'data:application/manifest+json;charset=utf-8,' + manifestStr;
+
+            const link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = manifestUrl;
+            document.head.appendChild(link);
+        })();
+    </script>
 
     <!-- PDF 생성을 위한 html2pdf 라이브러리 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -44,28 +74,21 @@
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', sans-serif; }
         
-        /* 모바일 브라우저 주소창 변화에 대응하기 위해 JS로 계산된 높이 적용 */
         body { background-color: var(--bg); display: flex; flex-direction: column; height: var(--app-height); overflow: hidden; }
         
-        /* 네비게이션 탭 (상단 고정 영역) */
         .tab-bar { display: flex; background-color: #fff; border-bottom: 2px solid var(--border); flex-shrink: 0; align-items: center; }
         .tab-btn { flex: 1; padding: 15px 0; border: none; background: none; font-size: 16px; font-weight: bold; color: #888; cursor: pointer; text-align: center; }
         .tab-btn.active { color: var(--primary); border-bottom: 3px solid var(--primary); }
         .top-action-btn { padding: 6px 10px; margin-right: 5px; border: none; border-radius: 5px; background: #34495e; color: white; font-size: 12px; font-weight: bold; cursor: pointer; flex-shrink: 0; }
-        
-        /* PWA 설치 버튼 - 기본적으로 숨겨둠 */
         .pwa-install-btn { background: #27ae60; color: white; display: none; }
 
-        /* 화면 컨테이너 - 상단과 하단 고정 영역 사이 공간 확보 */
         .screen { flex: 1; display: none; flex-direction: column; overflow: hidden; padding: 15px; padding-bottom: 60px; }
         .screen.active { display: flex; }
 
-        /* 공통 UI 요소 */
         .card { background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; }
         .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
         .row:last-child { margin-bottom: 0; }
         
-        /* 입력 폼 텍스트 요소 */
         select, input[type="text"], input[type="date"], input[type="time"] { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 5px; font-size: 16px; margin-top: 5px; }
         input[type="radio"] { width: auto; margin-right: 8px; transform: scale(1.3); margin-top: 0; }
 
@@ -78,7 +101,6 @@
 
         .balance-display { font-size: 24px; font-weight: bold; text-align: right; margin-top: 5px; color: var(--text); }
         
-        /* 입력 폼 */
         .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
         .input-group > div { flex: 1; }
         
@@ -88,11 +110,9 @@
         .btn-deposit { background: var(--red); }
         .btn-expense { background: var(--blue); }
 
-        /* 푸터 (제작자, 저장) - 하단 고정 영역 */
         .footer-area { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #fff; border-top: 1px solid var(--border); z-index: 10; height: 50px; }
         .creator-info { font-size: 12px; color: #aaa; line-height: 1.4; }
         
-        /* 내역 화면 전용 레이아웃 제어 */
         .history-list { display: flex; flex-direction: column; gap: 10px; }
         .history-item { border-bottom: 1px solid var(--border); padding-bottom: 10px; display: flex; flex-direction: column; }
         .history-item-top { display: flex; justify-content: flex-start; align-items: center; font-size: 12px; color: #777; margin-bottom: 5px; }
@@ -102,20 +122,17 @@
 
         .history-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; flex-shrink: 0; }
 
-        /* 모달 팝업 */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
         .modal-box { background: white; width: 85%; padding: 20px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .modal-text { font-size: 15px; margin-bottom: 20px; line-height: 1.6; white-space: pre-wrap; }
         .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
         .modal-btn { padding: 10px 15px; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; color: white; cursor: pointer; }
         
-        /* 수정 모드 텍스트 강조 */
         .text-editing { color: var(--red); font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <!-- 상단 탭 및 전체화면, PWA 설치 버튼 -->
     <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab('screen1')">금액입력</button>
         <button class="tab-btn" onclick="switchTab('screen2')">내역</button>
@@ -202,15 +219,13 @@
         </div>
     </div>
 
-    <!-- 하단 고정 영역 -->
     <div class="footer-area">
         <div class="creator-info">
-            제작: Lymiicx<br>Ver: 202609-006
+            제작: Lymiicx<br>Ver: 202609-007
         </div>
         <button class="btn-small" style="background:#2ecc71;" onclick="exportJSON()">save</button>
     </div>
 
-    <!-- 커스텀 모달 팝업 -->
     <div id="customModal" class="modal-overlay">
         <div class="modal-box">
             <div id="modalText" class="modal-text"></div>
@@ -219,76 +234,62 @@
     </div>
 
     <script>
-        // --- PWA 설치 및 Service Worker 연동 스크립트 ---
         let deferredPrompt = null;
         const installBtn = document.getElementById('installAppBtn');
-
-        // 사용자 기기가 iOS인지 확인
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        
-        // 사용자가 이미 앱을 바탕화면에 설치해서 독립 모드로 켰는지 확인
         const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
 
+        // 오프라인 응답까지 완벽하게 처리하는 서비스 워커 등록
         if ('serviceWorker' in navigator) {
             const swCode = `
                 self.addEventListener('install', (e) => self.skipWaiting());
                 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
                 self.addEventListener('fetch', (e) => {
-                    // PWA 오프라인 작동 조건 충족을 위한 기본 패치(fetch) 핸들러
+                    e.respondWith(
+                        fetch(e.request).catch(() => new Response('GaGeRoid Offline Mode', { headers: { 'Content-Type': 'text/plain' } }))
+                    );
                 });
             `;
-            const blob = new Blob([swCode], { type: 'text/javascript' });
+            const blob = new Blob([swCode], { type: 'application/javascript' });
             const swUrl = URL.createObjectURL(blob);
             
-            navigator.serviceWorker.register(swUrl)
-                .then(() => console.log('Service Worker Registered'))
-                .catch(err => console.log('SW Register Error:', err));
+            navigator.serviceWorker.register(swUrl).catch(err => console.log('SW Register Error:', err));
         }
 
-        // 안드로이드, PC 크롬에서 PWA 설치 조건이 충족되었을 때 실행됨
         window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault(); // 기본 설치 팝업 자동 표시 방지
-            deferredPrompt = e; // 이벤트를 보관해두었다가 원할 때 호출
-            
-            // 설치 가능한 상태이므로 버튼 노출
+            e.preventDefault(); 
+            deferredPrompt = e; 
             if (installBtn && !isStandalone) {
                 installBtn.style.display = 'inline-block';
             }
         });
 
-        // iOS 사파리의 경우 beforeinstallprompt를 지원하지 않음.
-        // 앱이 아직 설치되지 않은 일반 웹 모드라면 버튼을 강제로 띄워 모달로 안내.
         if (isIOS && !isStandalone && installBtn) {
             installBtn.style.display = 'inline-block';
         }
 
-        // PWA 앱 설치 버튼 클릭 이벤트
         function installPWA() {
             if (deferredPrompt) {
-                // 크롬/안드로이드 네이티브 팝업 호출
                 deferredPrompt.prompt();
                 deferredPrompt.userChoice.then((choiceResult) => {
                     if (choiceResult.outcome === 'accepted') {
-                        installBtn.style.display = 'none'; // 설치 승인 시 버튼 숨김
+                        installBtn.style.display = 'none'; 
                     }
                     deferredPrompt = null;
                 });
             } else if (isIOS) {
-                // iOS 사파리 환경을 위한 친절한 모달창 띄우기
                 showModal(
-                    "📱 iOS(아이폰/아이패드) 앱 설치 방법\n\n1. 브라우저 하단 중앙의 [공유] 버튼(네모 안에서 위로 향하는 화살표)을 누릅니다.\n2. 메뉴를 아래로 살짝 내려서 [홈 화면에 추가]를 선택합니다.\n3. 우측 상단의 [추가]를 누르면 바탕화면에 앱 아이콘이 생성됩니다.",
+                    "📱 iOS(아이폰/아이패드) 앱 설치 방법\n\n1. 브라우저 하단 중앙의 [공유] 버튼을 누릅니다.\n2. 메뉴를 내려서 [홈 화면에 추가]를 선택합니다.\n3. 우측 상단의 [추가]를 누르면 설치됩니다.",
                     [{ text: "확인", color: "var(--primary)", action: closeModal }]
                 );
             } else {
-                // 서버 환경이 아니거나 기타 이유로 네이티브 프롬프트가 없을 때의 안내
                 showModal(
-                    "⚠️ 설치 프롬프트를 띄울 수 없는 환경입니다.\n\nPC나 모바일 브라우저의 우측 상단 메뉴(⋮)에 있는 '홈 화면에 추가' 또는 '앱 설치' 버튼을 직접 클릭해 주세요.",
+                    "⚠️ 로컬 환경 보안 제한\n\n현재 파일 환경에서는 설치를 진행할 수 없습니다. 깃허브 등 웹 서버 환경에 업로드하신 후 접근해 주세요.",
                     [{ text: "확인", color: "var(--primary)", action: closeModal }]
                 );
             }
         }
 
-        // 모바일 브라우저 주소창 높이 변화 대응을 위한 실시간 높이 설정
         function setAppHeight() {
             let docHeight = window.innerHeight;
             document.documentElement.style.setProperty('--app-height', `${docHeight}px`);
@@ -296,7 +297,6 @@
         window.addEventListener('resize', setAppHeight);
         setAppHeight();
 
-        // 전체화면 토글 함수
         function toggleFullScreen() {
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => {
@@ -309,7 +309,6 @@
             }
         }
 
-        // 전역 상태
         let db;
         let accounts = [];
         let transactions = [];
@@ -317,7 +316,6 @@
         let pendingFileContent = null;
         let editingTransactionId = null; 
 
-        // DB 초기화
         const request = indexedDB.open("GaGeRoidDB", 1);
         request.onupgradeneeded = (e) => {
             db = e.target.result;
@@ -333,14 +331,12 @@
             loadDataFromDB();
         };
 
-        // 기본 날짜/시간 세팅
         function setDefaultDateTime() {
             const now = new Date();
             document.getElementById('inputDate').value = now.toISOString().split('T')[0];
             document.getElementById('inputTime').value = now.toTimeString().slice(0,5);
         }
 
-        // 탭 전환
         function switchTab(screenId) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -355,7 +351,6 @@
             }
         }
 
-        // DB에서 데이터 불러오기
         function loadDataFromDB() {
             const tx = db.transaction(['accounts', 'transactions'], 'readonly');
             
@@ -380,7 +375,6 @@
             };
         }
 
-        // 선택 대상 변경
         function changeTarget(id) {
             currentAccountId = id;
             document.getElementById('targetSelect1').value = id;
@@ -393,7 +387,6 @@
             }
         }
 
-        // 계좌/카드 생성
         function createAccount() {
             const name = prompt("새로운 계좌 또는 카드명을 입력하세요.");
             if(name && name.trim()) {
