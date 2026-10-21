@@ -52,7 +52,9 @@
         .tab-btn { flex: 1; padding: 15px 0; border: none; background: none; font-size: 16px; font-weight: bold; color: #888; cursor: pointer; text-align: center; }
         .tab-btn.active { color: var(--primary); border-bottom: 3px solid var(--primary); }
         .top-action-btn { padding: 6px 10px; margin-right: 5px; border: none; border-radius: 5px; background: #34495e; color: white; font-size: 12px; font-weight: bold; cursor: pointer; flex-shrink: 0; }
-        .pwa-install-btn { background: #27ae60; color: white; }
+        
+        /* PWA 설치 버튼 - 기본적으로 숨겨둠 */
+        .pwa-install-btn { background: #27ae60; color: white; display: none; }
 
         /* 화면 컨테이너 - 상단과 하단 고정 영역 사이 공간 확보 */
         .screen { flex: 1; display: none; flex-direction: column; overflow: hidden; padding: 15px; padding-bottom: 60px; }
@@ -103,7 +105,7 @@
         /* 모달 팝업 */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
         .modal-box { background: white; width: 85%; padding: 20px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-        .modal-text { font-size: 16px; margin-bottom: 20px; line-height: 1.5; }
+        .modal-text { font-size: 15px; margin-bottom: 20px; line-height: 1.6; white-space: pre-wrap; }
         .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
         .modal-btn { padding: 10px 15px; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; color: white; cursor: pointer; }
         
@@ -162,7 +164,6 @@
             <div>
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-size:12px; color:#777;">내용</div>
-                    <!-- 개별 내역 수정취소 및 삭제 버튼 (수정 모드일 때만 보임) -->
                     <div style="display:flex; gap:5px;">
                         <button id="btnCancelEdit" class="btn-small gray" style="display:none; padding:2px 8px; font-size:12px;" onclick="cancelEditingAndReturn()">수정취소</button>
                         <button id="btnDeleteHistory" class="btn-small danger" style="display:none; padding:2px 8px; font-size:12px;" onclick="confirmDeleteHistory()">삭제</button>
@@ -181,23 +182,19 @@
 
     <!-- 화면 2: 내역 -->
     <div id="screen2" class="screen">
-        <!-- 대상 선택 영역 (고정) -->
         <div class="card" style="flex-shrink: 0; margin-bottom: 10px;">
             <div style="font-size:12px; color:#777;">대상</div>
             <select id="targetSelect2" onchange="changeTarget(this.value)"></select>
         </div>
 
-        <!-- 현재잔액 및 내역 리스트 영역 (내역 리스트만 스크롤됨) -->
         <div class="card" style="flex: 1; display: flex; flex-direction: column; padding: 0; overflow: hidden; margin-bottom: 10px;">
             <div style="padding: 15px; border-bottom: 2px solid var(--text); flex-shrink: 0; background: #fff;">
                 <h3 id="historyBalanceTitle">현재잔액: 0</h3>
             </div>
             <div id="historyList" class="history-list" style="padding: 15px; overflow-y: auto; flex: 1;">
-                <!-- 내역 아이템들이 여기에 추가됨 -->
             </div>
         </div>
 
-        <!-- 하단 액션 버튼 영역 ([수정] [PDF] [내역정리], 고정 배치) -->
         <div class="history-actions">
             <button class="btn-small blue" onclick="editSelectedHistory()">수정</button>
             <button class="btn-small gray" onclick="exportPDF()">PDF</button>
@@ -208,7 +205,7 @@
     <!-- 하단 고정 영역 -->
     <div class="footer-area">
         <div class="creator-info">
-            제작: Lymiicx<br>Ver: 202609-005
+            제작: Lymiicx<br>Ver: 202609-006
         </div>
         <button class="btn-small" style="background:#2ecc71;" onclick="exportJSON()">save</button>
     </div>
@@ -224,14 +221,20 @@
     <script>
         // --- PWA 설치 및 Service Worker 연동 스크립트 ---
         let deferredPrompt = null;
+        const installBtn = document.getElementById('installAppBtn');
 
-        // Blob URL을 이용해 서비스 워커 동적 등록 (별도 js 파일 없이 작동)
+        // 사용자 기기가 iOS인지 확인
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        
+        // 사용자가 이미 앱을 바탕화면에 설치해서 독립 모드로 켰는지 확인
+        const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+
         if ('serviceWorker' in navigator) {
             const swCode = `
                 self.addEventListener('install', (e) => self.skipWaiting());
                 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
                 self.addEventListener('fetch', (e) => {
-                    // 네트워크 응답 시 작동 (필요 시 캐싱 로직 확장 가능)
+                    // PWA 오프라인 작동 조건 충족을 위한 기본 패치(fetch) 핸들러
                 });
             `;
             const blob = new Blob([swCode], { type: 'text/javascript' });
@@ -242,34 +245,46 @@
                 .catch(err => console.log('SW Register Error:', err));
         }
 
-        // PWA 설치 프롬프트 감지
+        // 안드로이드, PC 크롬에서 PWA 설치 조건이 충족되었을 때 실행됨
         window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            const installBtn = document.getElementById('installAppBtn');
-            if (installBtn) {
+            e.preventDefault(); // 기본 설치 팝업 자동 표시 방지
+            deferredPrompt = e; // 이벤트를 보관해두었다가 원할 때 호출
+            
+            // 설치 가능한 상태이므로 버튼 노출
+            if (installBtn && !isStandalone) {
                 installBtn.style.display = 'inline-block';
             }
         });
 
-        // PWA 설치 함수
+        // iOS 사파리의 경우 beforeinstallprompt를 지원하지 않음.
+        // 앱이 아직 설치되지 않은 일반 웹 모드라면 버튼을 강제로 띄워 모달로 안내.
+        if (isIOS && !isStandalone && installBtn) {
+            installBtn.style.display = 'inline-block';
+        }
+
+        // PWA 앱 설치 버튼 클릭 이벤트
         function installPWA() {
             if (deferredPrompt) {
+                // 크롬/안드로이드 네이티브 팝업 호출
                 deferredPrompt.prompt();
                 deferredPrompt.userChoice.then((choiceResult) => {
                     if (choiceResult.outcome === 'accepted') {
-                        console.log('User accepted the install prompt');
+                        installBtn.style.display = 'none'; // 설치 승인 시 버튼 숨김
                     }
                     deferredPrompt = null;
                 });
+            } else if (isIOS) {
+                // iOS 사파리 환경을 위한 친절한 모달창 띄우기
+                showModal(
+                    "📱 iOS(아이폰/아이패드) 앱 설치 방법\n\n1. 브라우저 하단 중앙의 [공유] 버튼(네모 안에서 위로 향하는 화살표)을 누릅니다.\n2. 메뉴를 아래로 살짝 내려서 [홈 화면에 추가]를 선택합니다.\n3. 우측 상단의 [추가]를 누르면 바탕화면에 앱 아이콘이 생성됩니다.",
+                    [{ text: "확인", color: "var(--primary)", action: closeModal }]
+                );
             } else {
-                // 이미 설치되었거나 설치 프롬프트를 직접 지원하지 않는 브라우저 안내
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                if (isIOS) {
-                    alert("iOS(사파리) 환경에서는 브라우저 하단의 [공유] 버튼을 누른 후 '홈 화면에 추가'를 선택해 주세요.");
-                } else {
-                    alert("브라우저 메뉴(⋮)에서 '앱 설치' 또는 '홈 화면에 추가'를 선택해 주세요.");
-                }
+                // 서버 환경이 아니거나 기타 이유로 네이티브 프롬프트가 없을 때의 안내
+                showModal(
+                    "⚠️ 설치 프롬프트를 띄울 수 없는 환경입니다.\n\nPC나 모바일 브라우저의 우측 상단 메뉴(⋮)에 있는 '홈 화면에 추가' 또는 '앱 설치' 버튼을 직접 클릭해 주세요.",
+                    [{ text: "확인", color: "var(--primary)", action: closeModal }]
+                );
             }
         }
 
@@ -300,7 +315,7 @@
         let transactions = [];
         let currentAccountId = null;
         let pendingFileContent = null;
-        let editingTransactionId = null; // 현재 수정 중인 내역 ID
+        let editingTransactionId = null; 
 
         // DB 초기화
         const request = indexedDB.open("GaGeRoidDB", 1);
@@ -395,7 +410,6 @@
             }
         }
 
-        // 계좌 이름 변경 기능 (rename)
         function renameAccount() {
             if(!currentAccountId) {
                 alert("이름을 변경할 대상을 먼저 선택해주세요.");
@@ -418,7 +432,6 @@
             }
         }
 
-        // 계좌 삭제 확인
         function confirmDeleteAccount() {
             if(!currentAccountId) return;
             showModal(
@@ -431,7 +444,6 @@
             );
         }
 
-        // 계좌 삭제 실행
         function deleteCurrentAccount() {
             const tx = db.transaction(['accounts', 'transactions'], 'readwrite');
             tx.objectStore('accounts').delete(currentAccountId);
@@ -451,7 +463,6 @@
             };
         }
 
-        // 셀렉트 박스 업데이트
         function updateSelectBoxes() {
             const sel1 = document.getElementById('targetSelect1');
             const sel2 = document.getElementById('targetSelect2');
@@ -470,7 +481,6 @@
             }
         }
 
-        // 잔액 계산 로직
         function calculateBalance(accId) {
             let trs = transactions.filter(t => t.accountId === accId);
             trs.sort((a, b) => a.datetime.localeCompare(b.datetime));
@@ -484,7 +494,6 @@
             return bal;
         }
 
-        // UI 업데이트
         function updateUI() {
             if(!currentAccountId) {
                 document.getElementById('currentBalanceDisplay').innerText = "0";
@@ -494,13 +503,11 @@
             document.getElementById('currentBalanceDisplay').innerText = bal.toLocaleString();
         }
 
-        // 금액 콤마 포맷팅
         function formatNumber(input) {
             let val = input.value.replace(/,/g, '').replace(/\D/g, '');
             input.value = val ? Number(val).toLocaleString() : '';
         }
 
-        // 마지막 수정일 갱신
         function updateAccountModified(id) {
             const acc = accounts.find(a => a.id === id);
             if(acc) {
@@ -510,7 +517,6 @@
             }
         }
 
-        // 거래 버튼 클릭 핸들러
         function handleTransactionClick(type) {
             if(!currentAccountId) { alert("계좌를 먼저 생성해주세요."); return; }
             
@@ -544,7 +550,6 @@
             }
         }
 
-        // 실제 내역 저장/수정 실행
         function executeTransaction(type) {
             const d = document.getElementById('inputDate').value;
             const t = document.getElementById('inputTime').value;
@@ -590,7 +595,6 @@
             }
         }
 
-        // 트랜잭션 완료 후 UI 정리
         function finalizeTransaction() {
             updateAccountModified(currentAccountId);
             updateUI();
@@ -600,7 +604,6 @@
             cancelEditing();
         }
 
-        // 내역 수정 모드로 진입
         function editSelectedHistory() {
             const selectedRadio = document.querySelector('input[name="historySelect"]:checked');
             if(!selectedRadio) {
@@ -638,7 +641,6 @@
             switchTab('screen1');
         }
 
-        // 내역 수정 모드 취소/초기화
         function cancelEditing() {
             editingTransactionId = null;
             
@@ -657,13 +659,11 @@
             document.getElementById('inputMemo').value = '';
         }
 
-        // 수정취소 버튼 클릭 시 내역 화면으로 복귀
         function cancelEditingAndReturn() {
             cancelEditing();
             switchTab('screen2');
         }
 
-        // 개별 내역 삭제 확인
         function confirmDeleteHistory() {
             if(!editingTransactionId) return;
             showModal(
@@ -675,7 +675,6 @@
             );
         }
 
-        // 개별 내역 삭제 실행
         function deleteEditingHistory() {
             if(!editingTransactionId) return;
             const tx = db.transaction('transactions', 'readwrite');
@@ -688,7 +687,6 @@
             };
         }
 
-        // 내역 화면 렌더링
         function renderHistory() {
             if(!currentAccountId) return;
             const bal = calculateBalance(currentAccountId);
@@ -722,7 +720,6 @@
             });
         }
 
-        // 내역 정리 (잔액 유지)
         function confirmClearHistory() {
             if(!currentAccountId) return;
             showModal(
@@ -766,7 +763,6 @@
             };
         }
 
-        // JSON 파일로 모든 내용 저장
         function exportJSON(callback) {
             const data = {
                 accounts: accounts,
@@ -794,7 +790,6 @@
             }
         }
 
-        // 파일 로드 선택 시
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if(!file) return;
@@ -820,7 +815,6 @@
             reader.readAsText(file);
         }
 
-        // 파일 내용 DB 덮어쓰기
         function loadFileContent() {
             if(!pendingFileContent) return;
             const tx = db.transaction(['accounts', 'transactions'], 'readwrite');
@@ -840,7 +834,6 @@
             };
         }
 
-        // PDF 추출
         function exportPDF() {
             if(!currentAccountId) return;
             const accName = accounts.find(a => a.id === currentAccountId).name;
@@ -885,7 +878,6 @@
             html2pdf().set(opt).from(element).save();
         }
 
-        // 공통 모달 팝업 제어
         function showModal(text, buttons) {
             document.getElementById('modalText').innerText = text;
             const btnContainer = document.getElementById('modalBtns');
