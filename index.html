@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GaGeRoid</title>
+
+    <!-- PWA 테마 색상 및 iOS 지원 설정 -->
+    <meta name="theme-color" content="#4A90E2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="GaGeRoid">
+
+    <!-- Inline Web App Manifest (Data URL 방식) -->
+    <link rel="manifest" href='data:application/manifest+json,{
+        "name": "GaGeRoid - 가계부",
+        "short_name": "GaGeRoid",
+        "start_url": ".",
+        "display": "standalone",
+        "background_color": "#f4f6f8",
+        "theme_color": "#4A90E2",
+        "description": "간편 가계부 및 자산 관리 앱",
+        "icons": [
+            {
+                "src": "data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%234A90E2%22/><text y=%22.9em%22 font-size=%2290%22>💰</text></svg>",
+                "sizes": "192x192 512x512",
+                "type": "image/svg+xml",
+                "purpose": "any maskable"
+            }
+        ]
+    }'>
+
+    <!-- PDF 생성을 위한 html2pdf 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --primary: #4A90E2;
+            --bg: #f4f6f8;
+            --text: #333;
+            --border: #ddd;
+            --red: #e74c3c;
+            --blue: #3498db;
+            --app-height: 100vh;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Malgun Gothic', sans-serif; }
+        
+        /* 모바일 브라우저 주소창 변화에 대응하기 위해 JS로 계산된 높이 적용 */
+        body { background-color: var(--bg); display: flex; flex-direction: column; height: var(--app-height); overflow: hidden; }
+        
+        /* 네비게이션 탭 (상단 고정 영역) */
+        .tab-bar { display: flex; background-color: #fff; border-bottom: 2px solid var(--border); flex-shrink: 0; align-items: center; }
+        .tab-btn { flex: 1; padding: 15px 0; border: none; background: none; font-size: 16px; font-weight: bold; color: #888; cursor: pointer; text-align: center; }
+        .tab-btn.active { color: var(--primary); border-bottom: 3px solid var(--primary); }
+        .top-action-btn { padding: 6px 10px; margin-right: 5px; border: none; border-radius: 5px; background: #34495e; color: white; font-size: 12px; font-weight: bold; cursor: pointer; flex-shrink: 0; }
+        .pwa-install-btn { background: #27ae60; color: white; }
+
+        /* 화면 컨테이너 - 상단과 하단 고정 영역 사이 공간 확보 */
+        .screen { flex: 1; display: none; flex-direction: column; overflow: hidden; padding: 15px; padding-bottom: 60px; }
+        .screen.active { display: flex; }
+
+        /* 공통 UI 요소 */
+        .card { background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .row:last-child { margin-bottom: 0; }
+        
+        /* 입력 폼 텍스트 요소 */
+        select, input[type="text"], input[type="date"], input[type="time"] { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 5px; font-size: 16px; margin-top: 5px; }
+        input[type="radio"] { width: auto; margin-right: 8px; transform: scale(1.3); margin-top: 0; }
+
+        .target-controls { display: flex; gap: 5px; margin-left: 10px; flex-wrap: wrap; justify-content: flex-end; }
+        .btn-small { padding: 8px 10px; border: none; border-radius: 5px; background: var(--primary); color: white; font-weight: bold; cursor: pointer; font-size: 13px; }
+        .btn-small.danger { background: var(--red); }
+        .btn-small.gray { background: #7f8c8d; }
+        .btn-small.blue { background: var(--primary); }
+        .btn-small.orange { background: #f39c12; }
+
+        .balance-display { font-size: 24px; font-weight: bold; text-align: right; margin-top: 5px; color: var(--text); }
+        
+        /* 입력 폼 */
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        .input-group > div { flex: 1; }
+        
+        .action-buttons { display: flex; gap: 10px; margin-top: 15px; }
+        .btn-action { flex: 1; padding: 12px; border: none; border-radius: 5px; color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn-set { background: #95a5a6; }
+        .btn-deposit { background: var(--red); }
+        .btn-expense { background: var(--blue); }
+
+        /* 푸터 (제작자, 저장) - 하단 고정 영역 */
+        .footer-area { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #fff; border-top: 1px solid var(--border); z-index: 10; height: 50px; }
+        .creator-info { font-size: 12px; color: #aaa; line-height: 1.4; }
+        
+        /* 내역 화면 전용 레이아웃 제어 */
+        .history-list { display: flex; flex-direction: column; gap: 10px; }
+        .history-item { border-bottom: 1px solid var(--border); padding-bottom: 10px; display: flex; flex-direction: column; }
+        .history-item-top { display: flex; justify-content: flex-start; align-items: center; font-size: 12px; color: #777; margin-bottom: 5px; }
+        .history-item-bottom { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; padding-left: 25px; }
+        .text-red { color: var(--red); }
+        .text-blue { color: var(--blue); }
+
+        .history-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; flex-shrink: 0; }
+
+        /* 모달 팝업 */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; }
+        .modal-box { background: white; width: 85%; padding: 20px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .modal-text { font-size: 16px; margin-bottom: 20px; line-height: 1.5; }
+        .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-btn { padding: 10px 15px; border: none; border-radius: 5px; font-size: 14px; font-weight: bold; color: white; cursor: pointer; }
+        
+        /* 수정 모드 텍스트 강조 */
+        .text-editing { color: var(--red); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <!-- 상단 탭 및 전체화면, PWA 설치 버튼 -->
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('screen1')">금액입력</button>
+        <button class="tab-btn" onclick="switchTab('screen2')">내역</button>
+        <button id="installAppBtn" class="top-action-btn pwa-install-btn" onclick="installPWA()">앱 설치</button>
+        <button class="top-action-btn" onclick="toggleFullScreen()">전체화면</button>
+    </div>
+
+    <!-- 화면 1: 금액입력 -->
+    <div id="screen1" class="screen active" style="overflow-y: auto;">
+        <div class="card">
+            <div class="row">
+                <div style="flex:1; min-width: 0;">
+                    <div style="font-size:12px; color:#777;">대상</div>
+                    <select id="targetSelect1" onchange="changeTarget(this.value)"></select>
+                </div>
+                <div class="target-controls">
+                    <button class="btn-small" onclick="createAccount()">+</button>
+                    <button class="btn-small danger" onclick="confirmDeleteAccount()">-</button>
+                    <button class="btn-small gray" onclick="document.getElementById('fileInput').click()">load</button>
+                    <button class="btn-small orange" onclick="renameAccount()">rename</button>
+                    <input type="file" id="fileInput" accept=".json" style="display:none;" onchange="handleFileSelect(event)">
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="font-size:12px; color:#777;">잔액</div>
+            <div id="currentBalanceDisplay" class="balance-display">0</div>
+        </div>
+
+        <div class="card">
+            <div class="input-group">
+                <div>
+                    <div id="dateLabel" style="font-size:12px; color:#777;">Date</div>
+                    <input type="date" id="inputDate">
+                </div>
+                <div>
+                    <div style="font-size:12px; color:#777;">Time</div>
+                    <input type="time" id="inputTime">
+                </div>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <div id="amountLabel" style="font-size:12px; color:#777;">금액</div>
+                <input type="text" id="inputAmount" placeholder="금액 입력" inputmode="numeric" oninput="formatNumber(this)">
+            </div>
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:12px; color:#777;">내용</div>
+                    <!-- 개별 내역 수정취소 및 삭제 버튼 (수정 모드일 때만 보임) -->
+                    <div style="display:flex; gap:5px;">
+                        <button id="btnCancelEdit" class="btn-small gray" style="display:none; padding:2px 8px; font-size:12px;" onclick="cancelEditingAndReturn()">수정취소</button>
+                        <button id="btnDeleteHistory" class="btn-small danger" style="display:none; padding:2px 8px; font-size:12px;" onclick="confirmDeleteHistory()">삭제</button>
+                    </div>
+                </div>
+                <input type="text" id="inputMemo" placeholder="사용내역 입력">
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn-action btn-set" onclick="handleTransactionClick('set')">잔액수정</button>
+                <button class="btn-action btn-deposit" onclick="handleTransactionClick('deposit')">입금</button>
+                <button class="btn-action btn-expense" onclick="handleTransactionClick('expense')">지출</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 화면 2: 내역 -->
+    <div id="screen2" class="screen">
+        <!-- 대상 선택 영역 (고정) -->
+        <div class="card" style="flex-shrink: 0; margin-bottom: 10px;">
+            <div style="font-size:12px; color:#777;">대상</div>
+            <select id="targetSelect2" onchange="changeTarget(this.value)"></select>
+        </div>
+
+        <!-- 현재잔액 및 내역 리스트 영역 (내역 리스트만 스크롤됨) -->
+        <div class="card" style="flex: 1; display: flex; flex-direction: column; padding: 0; overflow: hidden; margin-bottom: 10px;">
+            <div style="padding: 15px; border-bottom: 2px solid var(--text); flex-shrink: 0; background: #fff;">
+                <h3 id="historyBalanceTitle">현재잔액: 0</h3>
+            </div>
+            <div id="historyList" class="history-list" style="padding: 15px; overflow-y: auto; flex: 1;">
+                <!-- 내역 아이템들이 여기에 추가됨 -->
+            </div>
+        </div>
+
+        <!-- 하단 액션 버튼 영역 ([수정] [PDF] [내역정리], 고정 배치) -->
+        <div class="history-actions">
+            <button class="btn-small blue" onclick="editSelectedHistory()">수정</button>
+            <button class="btn-small gray" onclick="exportPDF()">PDF</button>
+            <button class="btn-small danger" onclick="confirmClearHistory()">내역정리</button>
+        </div>
+    </div>
+
+    <!-- 하단 고정 영역 -->
+    <div class="footer-area">
+        <div class="creator-info">
+            제작: Lymiicx<br>Ver: 202609-005
+        </div>
+        <button class="btn-small" style="background:#2ecc71;" onclick="exportJSON()">save</button>
+    </div>
+
+    <!-- 커스텀 모달 팝업 -->
+    <div id="customModal" class="modal-overlay">
+        <div class="modal-box">
+            <div id="modalText" class="modal-text"></div>
+            <div id="modalBtns" class="modal-btns"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- PWA 설치 및 Service Worker 연동 스크립트 ---
+        let deferredPrompt = null;
+
+        // Blob URL을 이용해 서비스 워커 동적 등록 (별도 js 파일 없이 작동)
+        if ('serviceWorker' in navigator) {
+            const swCode = `
+                self.addEventListener('install', (e) => self.skipWaiting());
+                self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+                self.addEventListener('fetch', (e) => {
+                    // 네트워크 응답 시 작동 (필요 시 캐싱 로직 확장 가능)
+                });
+            `;
+            const blob = new Blob([swCode], { type: 'text/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+            
+            navigator.serviceWorker.register(swUrl)
+                .then(() => console.log('Service Worker Registered'))
+                .catch(err => console.log('SW Register Error:', err));
+        }
+
+        // PWA 설치 프롬프트 감지
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const installBtn = document.getElementById('installAppBtn');
+            if (installBtn) {
+                installBtn.style.display = 'inline-block';
+            }
+        });
+
+        // PWA 설치 함수
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('User accepted the install prompt');
+                    }
+                    deferredPrompt = null;
+                });
+            } else {
+                // 이미 설치되었거나 설치 프롬프트를 직접 지원하지 않는 브라우저 안내
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (isIOS) {
+                    alert("iOS(사파리) 환경에서는 브라우저 하단의 [공유] 버튼을 누른 후 '홈 화면에 추가'를 선택해 주세요.");
+                } else {
+                    alert("브라우저 메뉴(⋮)에서 '앱 설치' 또는 '홈 화면에 추가'를 선택해 주세요.");
+                }
+            }
+        }
+
+        // 모바일 브라우저 주소창 높이 변화 대응을 위한 실시간 높이 설정
+        function setAppHeight() {
+            let docHeight = window.innerHeight;
+            document.documentElement.style.setProperty('--app-height', `${docHeight}px`);
+        }
+        window.addEventListener('resize', setAppHeight);
+        setAppHeight();
+
+        // 전체화면 토글 함수
+        function toggleFullScreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    alert(`전체화면 모드를 지원하지 않는 환경입니다: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // 전역 상태
+        let db;
+        let accounts = [];
+        let transactions = [];
+        let currentAccountId = null;
+        let pendingFileContent = null;
+        let editingTransactionId = null; // 현재 수정 중인 내역 ID
+
+        // DB 초기화
+        const request = indexedDB.open("GaGeRoidDB", 1);
+        request.onupgradeneeded = (e) => {
+            db = e.target.result;
+            if (!db.objectStoreNames.contains('accounts')) {
+                db.createObjectStore('accounts', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('transactions')) {
+                db.createObjectStore('transactions', { keyPath: 'id' });
+            }
+        };
+        request.onsuccess = (e) => {
+            db = e.target.result;
+            loadDataFromDB();
+        };
+
+        // 기본 날짜/시간 세팅
+        function setDefaultDateTime() {
+            const now = new Date();
+            document.getElementById('inputDate').value = now.toISOString().split('T')[0];
+            document.getElementById('inputTime').value = now.toTimeString().slice(0,5);
+        }
+
+        // 탭 전환
+        function switchTab(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            
+            document.getElementById(screenId).classList.add('active');
+            if(screenId === 'screen1') {
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+                updateUI();
+            } else {
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                renderHistory();
+            }
+        }
+
+        // DB에서 데이터 불러오기
+        function loadDataFromDB() {
+            const tx = db.transaction(['accounts', 'transactions'], 'readonly');
+            
+            const accReq = tx.objectStore('accounts').getAll();
+            accReq.onsuccess = () => {
+                accounts = accReq.result;
+                accounts.sort((a, b) => b.lastModified - a.lastModified);
+                
+                const trReq = tx.objectStore('transactions').getAll();
+                trReq.onsuccess = () => {
+                    transactions = trReq.result;
+                    
+                    if(accounts.length > 0) {
+                        currentAccountId = accounts[0].id;
+                        updateSelectBoxes();
+                        updateUI();
+                    } else {
+                        setTimeout(() => alert("생성된 계좌가 없습니다. [+]를 눌러 생성하거나 [load]로 파일을 불러오세요."), 500);
+                    }
+                    setDefaultDateTime();
+                };
+            };
+        }
+
+        // 선택 대상 변경
+        function changeTarget(id) {
+            currentAccountId = id;
+            document.getElementById('targetSelect1').value = id;
+            document.getElementById('targetSelect2').value = id;
+            updateAccountModified(id);
+            cancelEditing();
+            updateUI();
+            if(document.getElementById('screen2').classList.contains('active')) {
+                renderHistory();
+            }
+        }
+
+        // 계좌/카드 생성
+        function createAccount() {
+            const name = prompt("새로운 계좌 또는 카드명을 입력하세요.");
+            if(name && name.trim()) {
+                const newAcc = { id: Date.now().toString(), name: name.trim(), lastModified: Date.now() };
+                const tx = db.transaction('accounts', 'readwrite');
+                tx.objectStore('accounts').add(newAcc);
+                tx.oncomplete = () => {
+                    accounts.push(newAcc);
+                    currentAccountId = newAcc.id;
+                    updateSelectBoxes();
+                    cancelEditing();
+                    updateUI();
+                };
+            }
+        }
+
+        // 계좌 이름 변경 기능 (rename)
+        function renameAccount() {
+            if(!currentAccountId) {
+                alert("이름을 변경할 대상을 먼저 선택해주세요.");
+                return;
+            }
+            const acc = accounts.find(a => a.id === currentAccountId);
+            if(!acc) return;
+
+            const newName = prompt("변경할 계좌 또는 카드명을 입력하세요.", acc.name);
+            if(newName && newName.trim() && newName.trim() !== acc.name) {
+                acc.name = newName.trim();
+                acc.lastModified = Date.now();
+                
+                const tx = db.transaction('accounts', 'readwrite');
+                tx.objectStore('accounts').put(acc);
+                tx.oncomplete = () => {
+                    updateSelectBoxes();
+                    updateUI();
+                };
+            }
+        }
+
+        // 계좌 삭제 확인
+        function confirmDeleteAccount() {
+            if(!currentAccountId) return;
+            showModal(
+                "선택한 내용을 삭제합니다. 삭제하기 전 저장하시겠습니까?",
+                [
+                    { text: "save", color: "#2ecc71", action: () => { exportJSON(() => deleteCurrentAccount()); } },
+                    { text: "그대로 삭제", color: "var(--red)", action: () => { deleteCurrentAccount(); } },
+                    { text: "취소", color: "var(--text)", action: closeModal }
+                ]
+            );
+        }
+
+        // 계좌 삭제 실행
+        function deleteCurrentAccount() {
+            const tx = db.transaction(['accounts', 'transactions'], 'readwrite');
+            tx.objectStore('accounts').delete(currentAccountId);
+            
+            const trStore = tx.objectStore('transactions');
+            const relatedTrs = transactions.filter(t => t.accountId === currentAccountId);
+            relatedTrs.forEach(t => trStore.delete(t.id));
+
+            tx.oncomplete = () => {
+                accounts = accounts.filter(a => a.id !== currentAccountId);
+                transactions = transactions.filter(t => t.accountId !== currentAccountId);
+                currentAccountId = accounts.length > 0 ? accounts[0].id : null;
+                updateSelectBoxes();
+                cancelEditing();
+                updateUI();
+                closeModal();
+            };
+        }
+
+        // 셀렉트 박스 업데이트
+        function updateSelectBoxes() {
+            const sel1 = document.getElementById('targetSelect1');
+            const sel2 = document.getElementById('targetSelect2');
+            sel1.innerHTML = '';
+            sel2.innerHTML = '';
+            
+            accounts.forEach(a => {
+                const opt = `<option value="${a.id}">${a.name}</option>`;
+                sel1.innerHTML += opt;
+                sel2.innerHTML += opt;
+            });
+
+            if(currentAccountId) {
+                sel1.value = currentAccountId;
+                sel2.value = currentAccountId;
+            }
+        }
+
+        // 잔액 계산 로직
+        function calculateBalance(accId) {
+            let trs = transactions.filter(t => t.accountId === accId);
+            trs.sort((a, b) => a.datetime.localeCompare(b.datetime));
+            
+            let bal = 0;
+            trs.forEach(t => {
+                if(t.type === 'set') bal = t.amount;
+                else if(t.type === 'deposit') bal += t.amount;
+                else if(t.type === 'expense') bal -= t.amount;
+            });
+            return bal;
+        }
+
+        // UI 업데이트
+        function updateUI() {
+            if(!currentAccountId) {
+                document.getElementById('currentBalanceDisplay').innerText = "0";
+                return;
+            }
+            const bal = calculateBalance(currentAccountId);
+            document.getElementById('currentBalanceDisplay').innerText = bal.toLocaleString();
+        }
+
+        // 금액 콤마 포맷팅
+        function formatNumber(input) {
+            let val = input.value.replace(/,/g, '').replace(/\D/g, '');
+            input.value = val ? Number(val).toLocaleString() : '';
+        }
+
+        // 마지막 수정일 갱신
+        function updateAccountModified(id) {
+            const acc = accounts.find(a => a.id === id);
+            if(acc) {
+                acc.lastModified = Date.now();
+                const tx = db.transaction('accounts', 'readwrite');
+                tx.objectStore('accounts').put(acc);
+            }
+        }
+
+        // 거래 버튼 클릭 핸들러
+        function handleTransactionClick(type) {
+            if(!currentAccountId) { alert("계좌를 먼저 생성해주세요."); return; }
+            
+            const d = document.getElementById('inputDate').value;
+            const t = document.getElementById('inputTime').value;
+            const amtStr = document.getElementById('inputAmount').value.replace(/,/g, '');
+            
+            if(!d || !t || !amtStr) {
+                alert("날짜, 시간, 금액 등 비어있는 항목을 입력해주세요.");
+                return;
+            }
+
+            if(type === 'set') {
+                showModal(
+                    "입력된 금액으로 잔액을 수정합니까?",
+                    [
+                        { text: "확인", color: "var(--primary)", action: () => { executeTransaction('set'); closeModal(); } },
+                        { text: "취소", color: "var(--text)", action: closeModal }
+                    ]
+                );
+            } else if (editingTransactionId && (type === 'deposit' || type === 'expense')) {
+                showModal(
+                    "입력한 내용으로 수정합니까?",
+                    [
+                        { text: "확인", color: "var(--primary)", action: () => { executeTransaction(type); closeModal(); } },
+                        { text: "취소", color: "var(--text)", action: closeModal }
+                    ]
+                );
+            } else {
+                executeTransaction(type);
+            }
+        }
+
+        // 실제 내역 저장/수정 실행
+        function executeTransaction(type) {
+            const d = document.getElementById('inputDate').value;
+            const t = document.getElementById('inputTime').value;
+            const amount = Number(document.getElementById('inputAmount').value.replace(/,/g, ''));
+            const memo = document.getElementById('inputMemo').value.trim();
+            const datetime = d + " " + t;
+
+            const tx = db.transaction('transactions', 'readwrite');
+            const store = tx.objectStore('transactions');
+
+            if (editingTransactionId) {
+                const idx = transactions.findIndex(tr => tr.id === editingTransactionId);
+                if(idx !== -1) {
+                    transactions[idx].type = type;
+                    transactions[idx].amount = amount;
+                    transactions[idx].memo = memo;
+                    transactions[idx].date = d;
+                    transactions[idx].time = t;
+                    transactions[idx].datetime = datetime;
+
+                    store.put(transactions[idx]);
+                    tx.oncomplete = () => {
+                        finalizeTransaction();
+                    };
+                }
+            } else {
+                const tr = {
+                    id: Date.now().toString(),
+                    accountId: currentAccountId,
+                    type: type,
+                    amount: amount,
+                    memo: memo,
+                    datetime: datetime,
+                    date: d,
+                    time: t
+                };
+
+                store.add(tr);
+                tx.oncomplete = () => {
+                    transactions.push(tr);
+                    finalizeTransaction();
+                };
+            }
+        }
+
+        // 트랜잭션 완료 후 UI 정리
+        function finalizeTransaction() {
+            updateAccountModified(currentAccountId);
+            updateUI();
+            
+            document.getElementById('inputAmount').value = '';
+            document.getElementById('inputMemo').value = '';
+            cancelEditing();
+        }
+
+        // 내역 수정 모드로 진입
+        function editSelectedHistory() {
+            const selectedRadio = document.querySelector('input[name="historySelect"]:checked');
+            if(!selectedRadio) {
+                alert("수정할 내역을 선택해주세요.");
+                return;
+            }
+
+            const trId = selectedRadio.value;
+            const tr = transactions.find(t => t.id === trId);
+            if(!tr) return;
+
+            editingTransactionId = tr.id;
+            
+            document.getElementById('inputDate').value = tr.date;
+            document.getElementById('inputTime').value = tr.time;
+            document.getElementById('inputAmount').value = tr.amount.toLocaleString();
+            document.getElementById('inputMemo').value = tr.memo || '';
+
+            const dateLabel = document.getElementById('dateLabel');
+            dateLabel.innerText = "Date(수정 중)";
+            dateLabel.classList.add('text-editing');
+
+            const amountLabel = document.getElementById('amountLabel');
+            let typeText = "";
+            if (tr.type === 'deposit') typeText = "(입금 내역)";
+            else if (tr.type === 'expense') typeText = "(지출 내역)";
+            else if (tr.type === 'set') typeText = "(잔액수정 내역)";
+            
+            amountLabel.innerText = `금액${typeText}`;
+            amountLabel.classList.add('text-editing');
+
+            document.getElementById('btnCancelEdit').style.display = 'block';
+            document.getElementById('btnDeleteHistory').style.display = 'block';
+
+            switchTab('screen1');
+        }
+
+        // 내역 수정 모드 취소/초기화
+        function cancelEditing() {
+            editingTransactionId = null;
+            
+            const dateLabel = document.getElementById('dateLabel');
+            dateLabel.innerText = "Date";
+            dateLabel.classList.remove('text-editing');
+
+            const amountLabel = document.getElementById('amountLabel');
+            amountLabel.innerText = "금액";
+            amountLabel.classList.remove('text-editing');
+
+            document.getElementById('btnCancelEdit').style.display = 'none';
+            document.getElementById('btnDeleteHistory').style.display = 'none';
+
+            document.getElementById('inputAmount').value = '';
+            document.getElementById('inputMemo').value = '';
+        }
+
+        // 수정취소 버튼 클릭 시 내역 화면으로 복귀
+        function cancelEditingAndReturn() {
+            cancelEditing();
+            switchTab('screen2');
+        }
+
+        // 개별 내역 삭제 확인
+        function confirmDeleteHistory() {
+            if(!editingTransactionId) return;
+            showModal(
+                "내역을 삭제합니까?",
+                [
+                    { text: "확인", color: "var(--red)", action: () => { deleteEditingHistory(); closeModal(); } },
+                    { text: "취소", color: "var(--text)", action: closeModal }
+                ]
+            );
+        }
+
+        // 개별 내역 삭제 실행
+        function deleteEditingHistory() {
+            if(!editingTransactionId) return;
+            const tx = db.transaction('transactions', 'readwrite');
+            const store = tx.objectStore('transactions');
+            store.delete(editingTransactionId);
+
+            tx.oncomplete = () => {
+                transactions = transactions.filter(t => t.id !== editingTransactionId);
+                finalizeTransaction();
+            };
+        }
+
+        // 내역 화면 렌더링
+        function renderHistory() {
+            if(!currentAccountId) return;
+            const bal = calculateBalance(currentAccountId);
+            document.getElementById('historyBalanceTitle').innerText = `현재잔액: ${bal.toLocaleString()}`;
+
+            let trs = transactions.filter(t => t.accountId === currentAccountId);
+            trs.sort((a, b) => b.datetime.localeCompare(a.datetime));
+
+            const list = document.getElementById('historyList');
+            list.innerHTML = '';
+
+            trs.forEach(t => {
+                let sign = '';
+                let colorClass = '';
+                if(t.type === 'deposit') { sign = '+'; colorClass = 'text-red'; }
+                else if(t.type === 'expense') { sign = '-'; colorClass = 'text-blue'; }
+                else { sign = '잔액수정: '; colorClass = ''; }
+
+                list.innerHTML += `
+                    <div class="history-item">
+                        <label class="history-item-top">
+                            <input type="radio" name="historySelect" value="${t.id}">
+                            <span>${t.date} ${t.time}</span>
+                        </label>
+                        <div class="history-item-bottom">
+                            <span style="flex:1;">${t.memo || ''}</span>
+                            <span class="${colorClass}">${sign}${t.amount.toLocaleString()}</span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // 내역 정리 (잔액 유지)
+        function confirmClearHistory() {
+            if(!currentAccountId) return;
+            showModal(
+                "내역을 삭제합니까?",
+                [
+                    { text: "삭제", color: "var(--red)", action: clearHistory },
+                    { text: "취소", color: "var(--text)", action: closeModal }
+                ]
+            );
+        }
+
+        function clearHistory() {
+            const bal = calculateBalance(currentAccountId);
+            const now = new Date();
+            const d = now.toISOString().split('T')[0];
+            const t = now.toTimeString().slice(0,5);
+
+            const keepTr = {
+                id: Date.now().toString(),
+                accountId: currentAccountId,
+                type: 'set',
+                amount: bal,
+                memo: '내역정리 후 잔액이월',
+                datetime: d + " " + t,
+                date: d,
+                time: t
+            };
+
+            const tx = db.transaction('transactions', 'readwrite');
+            const store = tx.objectStore('transactions');
+            
+            const related = transactions.filter(tr => tr.accountId === currentAccountId);
+            related.forEach(tr => store.delete(tr.id));
+            store.add(keepTr);
+
+            tx.oncomplete = () => {
+                transactions = transactions.filter(tr => tr.accountId !== currentAccountId);
+                transactions.push(keepTr);
+                renderHistory();
+                closeModal();
+            };
+        }
+
+        // JSON 파일로 모든 내용 저장
+        function exportJSON(callback) {
+            const data = {
+                accounts: accounts,
+                transactions: transactions
+            };
+            const jsonStr = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const min = String(now.getMinutes()).padStart(2, '0');
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `GaGe_file_${yyyy}${mm}${dd}_${hh}${min}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            if(callback && typeof callback === 'function') {
+                setTimeout(callback, 500);
+            }
+        }
+
+        // 파일 로드 선택 시
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if(!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    pendingFileContent = JSON.parse(e.target.result);
+                    event.target.value = ''; 
+                    
+                    showModal(
+                        "선택한 파일로 내역을 대체합니다. 불러오겠습니까?",
+                        [
+                            { text: "save", color: "#2ecc71", action: () => { exportJSON(() => loadFileContent()); } },
+                            { text: "불러오기", color: "var(--primary)", action: loadFileContent },
+                            { text: "취소", color: "var(--text)", action: () => { pendingFileContent = null; closeModal(); } }
+                        ]
+                    );
+                } catch(err) {
+                    alert("잘못된 파일 형식입니다.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 파일 내용 DB 덮어쓰기
+        function loadFileContent() {
+            if(!pendingFileContent) return;
+            const tx = db.transaction(['accounts', 'transactions'], 'readwrite');
+            const accStore = tx.objectStore('accounts');
+            const trStore = tx.objectStore('transactions');
+
+            accStore.clear();
+            trStore.clear();
+
+            pendingFileContent.accounts.forEach(a => accStore.add(a));
+            pendingFileContent.transactions.forEach(t => trStore.add(t));
+
+            tx.oncomplete = () => {
+                loadDataFromDB();
+                closeModal();
+                pendingFileContent = null;
+            };
+        }
+
+        // PDF 추출
+        function exportPDF() {
+            if(!currentAccountId) return;
+            const accName = accounts.find(a => a.id === currentAccountId).name;
+            const element = document.createElement('div');
+            element.style.padding = '20px';
+            element.style.fontFamily = "'Malgun Gothic', sans-serif";
+            
+            let html = `<h2>${accName} 내역</h2>`;
+            html += `<h3 style="margin-bottom:20px;">${document.getElementById('historyBalanceTitle').innerText}</h3>`;
+            html += `<table style="width:100%; border-collapse: collapse; text-align:left;">
+                        <tr style="border-bottom: 2px solid #333; background:#eee;">
+                            <th style="padding:8px;">날짜/시간</th>
+                            <th style="padding:8px;">내용</th>
+                            <th style="padding:8px; text-align:right;">금액</th>
+                        </tr>`;
+            
+            let trs = transactions.filter(t => t.accountId === currentAccountId);
+            trs.sort((a, b) => b.datetime.localeCompare(a.datetime));
+
+            trs.forEach(t => {
+                let sign = t.type === 'deposit' ? '+' : (t.type === 'expense' ? '-' : '');
+                let color = t.type === 'deposit' ? '#e74c3c' : (t.type === 'expense' ? '#3498db' : '#333');
+                html += `
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <td style="padding:8px; font-size:12px;">${t.date} ${t.time}</td>
+                        <td style="padding:8px;">${t.memo || ''}</td>
+                        <td style="padding:8px; text-align:right; color:${color}; font-weight:bold;">${sign}${t.amount.toLocaleString()}</td>
+                    </tr>
+                `;
+            });
+            html += `</table>`;
+            element.innerHTML = html;
+
+            const opt = {
+                margin:       10,
+                filename:     `GaGeRoid_${accName}_${new Date().toISOString().split('T')[0]}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2 },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).save();
+        }
+
+        // 공통 모달 팝업 제어
+        function showModal(text, buttons) {
+            document.getElementById('modalText').innerText = text;
+            const btnContainer = document.getElementById('modalBtns');
+            btnContainer.innerHTML = '';
+            
+            buttons.forEach(btn => {
+                const b = document.createElement('button');
+                b.className = 'modal-btn';
+                b.style.backgroundColor = btn.color;
+                b.innerText = btn.text;
+                b.onclick = btn.action;
+                btnContainer.appendChild(b);
+            });
+            
+            document.getElementById('customModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('customModal').style.display = 'none';
+        }
+
+    </script>
+</body>
+</html>
