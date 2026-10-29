@@ -11,52 +11,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GaGeRoid">
 
-    <!-- 동적 Manifest 및 PNG 아이콘 생성 스크립트 -->
-    <script>
-        (function() {
-            function createPngIcon(size) {
-                const canvas = document.createElement('canvas');
-                canvas.width = size;
-                canvas.height = size;
-                const ctx = canvas.getContext('2d');
-                
-                ctx.fillStyle = '#4A90E2';
-                ctx.fillRect(0, 0, size, size);
-                
-                ctx.fillStyle = 'white';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.font = Math.floor(size * 0.5) + 'px Arial';
-                ctx.fillText('💰', size / 2, size / 2 + size * 0.05);
-                
-                return canvas.toDataURL('image/png');
-            }
-
-            const absoluteUrl = window.location.href.split('?')[0] || ".";
-
-            const manifest = {
-                "name": "GaGeRoid - 가계부",
-                "short_name": "GaGeRoid",
-                "start_url": absoluteUrl,
-                "display": "standalone",
-                "background_color": "#2c3e50",
-                "theme_color": "#4A90E2",
-                "description": "간편 가계부 및 자산 관리 앱",
-                "icons": [
-                    { "src": createPngIcon(192), "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-                    { "src": createPngIcon(512), "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-                ]
-            };
-
-            const manifestStr = encodeURIComponent(JSON.stringify(manifest));
-            const manifestUrl = 'data:application/manifest+json;charset=utf-8,' + manifestStr;
-
-            const link = document.createElement('link');
-            link.rel = 'manifest';
-            link.href = manifestUrl;
-            document.head.appendChild(link);
-        })();
-    </script>
+    <!-- PWA 정적 Manifest 및 아이콘 설정 -->
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 
     <!-- PDF 생성을 위한 html2pdf 라이브러리 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -239,20 +196,13 @@
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
 
+        // PWA Service Worker 정적 등록
         if ('serviceWorker' in navigator) {
-            const swCode = `
-                self.addEventListener('install', (e) => self.skipWaiting());
-                self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-                self.addEventListener('fetch', (e) => {
-                    e.respondWith(
-                        fetch(e.request).catch(() => new Response('GaGeRoid Offline Mode', { headers: { 'Content-Type': 'text/plain' } }))
-                    );
-                });
-            `;
-            const blob = new Blob([swCode], { type: 'application/javascript' });
-            const swUrl = URL.createObjectURL(blob);
-            
-            navigator.serviceWorker.register(swUrl).catch(err => console.log('SW Register Error:', err));
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Service Worker Registered:', reg.scope))
+                    .catch(err => console.log('Service Worker Register Error:', err));
+            });
         }
 
         window.addEventListener('beforeinstallprompt', (e) => {
@@ -315,6 +265,7 @@
         let pendingFileContent = null;
         let editingTransactionId = null; 
 
+        // 데이터베이스 설정 변경 없음
         const request = indexedDB.open("GaGeRoidDB", 1);
         request.onupgradeneeded = (e) => {
             db = e.target.result;
