@@ -199,7 +199,9 @@
         // PWA Service Worker 정적 등록
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
+                navigator.serviceWorker.register('/gageroid/sw.js', {
+                    scope: '/gageroid/'
+                })
                     .then(reg => console.log('Service Worker Registered:', reg.scope))
                     .catch(err => console.log('Service Worker Register Error:', err));
             });
