@@ -1,9 +1,9 @@
 {
-  "id": "/gageroid/",
+  "id": "https://yomalapin.github.io/gageroid/",
   "name": "GaGeRoid - 가계부",
   "short_name": "GaGeRoid",
   "description": "간편 가계부 및 자산 관리 앱",
-  "start_url": "/gageroid/index.html?source=pwa",
+  "start_url": "/gageroid/",
   "scope": "/gageroid/",
   "display": "standalone",
   "background_color": "#2c3e50",
